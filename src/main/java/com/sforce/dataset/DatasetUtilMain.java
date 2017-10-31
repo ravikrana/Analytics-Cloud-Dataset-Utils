@@ -36,7 +36,9 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
+import java.nio.file.Files;
 import java.text.DecimalFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Pattern;
@@ -54,6 +56,7 @@ import com.sforce.dataset.loader.DatasetLoader;
 import com.sforce.dataset.loader.DatasetLoaderException;
 import com.sforce.dataset.loader.EbinFormatWriter;
 import com.sforce.dataset.loader.file.schema.ext.ExternalFileSchema;
+import com.sforce.dataset.saql.SaqlUtil;
 import com.sforce.dataset.server.DatasetUtilServer;
 import com.sforce.dataset.util.CharsetChecker;
 import com.sforce.dataset.util.DatasetAugmenter;
@@ -71,7 +74,7 @@ public class DatasetUtilMain {
 	@SuppressWarnings("unused")
 	private static final boolean isJdk14LoggerConfigured = DatasetUtils.configureLog4j();	
 	
-	public static final String[][] validActions = {{"load","Load CSV"}, {"defineExtractFlow","Define SFDC Extract Data Flow"}, {"defineAugmentFlow","Define Dataset Augment Data Flow"},{"downloadXMD","Download All XMD Json Files"}, {"uploadXMD","Upload User XMD Json File"}, {"detectEncoding","Detect file encoding"}, {"downloadErrorFile","Fetch CSV Upload Error Report"}};
+	public static final String[][] validActions = {{"load","Load CSV"}, {"defineExtractFlow","Define SFDC Extract Data Flow"}, {"defineAugmentFlow","Define Dataset Augment Data Flow"},{"downloadXMD","Download All XMD Json Files"}, {"uploadXMD","Upload User XMD Json File"}, {"detectEncoding","Detect file encoding"}, {"downloadErrorFile","Fetch CSV Upload Error Report"}, {"queryDataset", "Query Dataset - SAQL"}};
 
 	public static void main(String[] args) {
 
@@ -799,7 +802,9 @@ public class DatasetUtilMain {
 				}
 				
 				try {
-					DatasetDownloader.downloadEM(params.dataset, partnerConnection);
+					Map<String, String> xmd = DatasetDownloader.getXMD(params.dataset, partnerConnection);
+					System.out.println(xmd);
+					new ObjectMapper().writeValue(new File("xmd.json"), xmd);
 				} catch (Exception e) {
 					e.printStackTrace(System.out);
 					return false;
@@ -843,7 +848,15 @@ public class DatasetUtilMain {
 						return false;
 				}
 				
-			}else
+			} else if (action.equalsIgnoreCase("queryDataset")) {
+				try {
+					List<Map<String,Object>> records = SaqlUtil.queryDataset(partnerConnection, String.join("", Files.readAllLines(new File(params.inputFile).toPath())));
+					new ObjectMapper().writeValue(new File("records.json"), records);
+				} catch (Exception e) {
+					e.printStackTrace(System.out);
+					return false;
+				}
+			} else
 			{
 				printUsage();
 				System.out.println("\nERROR: Invalid action {"+action+"}");
@@ -1019,6 +1032,24 @@ public class DatasetUtilMain {
 			{
 				params.dataset = getInputFromUser("Enter dataset name: ", true, false);						
 			}
+		} else if(action.equalsIgnoreCase("queryDataset"))
+		{
+			while (params.inputFile==null || params.inputFile.isEmpty()) 
+			{
+				String tmp = getInputFromUser("Enter inputFile with SAQL: ", true, false);
+				if(tmp!=null)
+				{
+				   File tempFile = validateInputFile(tmp, action);
+				   if(tempFile !=null)
+				   {
+					   params.inputFile =   tempFile.toString();
+					   break;
+				   }
+				}else
+					System.out.println("File {"+tmp+"} not found");
+				System.out.println();
+			}
+
 		} else if(action.equalsIgnoreCase("downloadxmd"))
 		{
 			if (params.dataset==null || params.dataset.isEmpty()) 
